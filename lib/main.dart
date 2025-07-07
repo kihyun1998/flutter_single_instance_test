@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:system_tray/system_tray.dart';
 import 'package:window_manager/window_manager.dart';
@@ -58,7 +60,7 @@ class _MyHomePageState extends State<MyHomePage> with WindowListener {
   void initState() {
     super.initState();
     windowManager.addListener(this);
-    // _initSystemTray();
+    _initSystemTray();
   }
 
   @override
@@ -69,7 +71,9 @@ class _MyHomePageState extends State<MyHomePage> with WindowListener {
 
   // System Tray 초기화
   Future<void> _initSystemTray() async {
-    String path = 'assets/images/app_icon.png'; // 아이콘 파일 경로
+    String path = Platform.isWindows
+        ? 'assets/images/app_icon.ico'
+        : 'assets/images/app_icon.png'; // 아이콘 파일 경로
 
     await _systemTray.initSystemTray(
       title: "Single Instance App",
