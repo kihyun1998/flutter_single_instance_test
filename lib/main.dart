@@ -1,125 +1,274 @@
 import 'package:flutter/material.dart';
+import 'package:system_tray/system_tray.dart';
+import 'package:window_manager/window_manager.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Window Manager 초기화
+  await windowManager.ensureInitialized();
+
+  // 윈도우 옵션 설정
+  WindowOptions windowOptions = const WindowOptions(
+    size: Size(800, 600),
+    center: true,
+    backgroundColor: Colors.transparent,
+    skipTaskbar: false,
+    titleBarStyle: TitleBarStyle.normal,
+    windowButtonVisibility: false, // 기본 윈도우 버튼 숨김
+  );
+
+  windowManager.waitUntilReadyToShow(windowOptions, () async {
+    await windowManager.show();
+    await windowManager.focus();
+  });
+
   runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Single Instance App',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        primarySwatch: Colors.blue,
         useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const MyHomePage(),
+      debugShowCheckedModeBanner: false,
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+  const MyHomePage({super.key});
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _MyHomePageState extends State<MyHomePage> with WindowListener {
+  final SystemTray _systemTray = SystemTray();
+  final AppWindow _appWindow = AppWindow();
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+  @override
+  void initState() {
+    super.initState();
+    windowManager.addListener(this);
+    // _initSystemTray();
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    super.dispose();
+  }
+
+  // System Tray 초기화
+  Future<void> _initSystemTray() async {
+    String path = 'assets/images/app_icon.png'; // 아이콘 파일 경로
+
+    await _systemTray.initSystemTray(
+      title: "Single Instance App",
+      iconPath: path,
+    );
+
+    // 시스템 트레이 메뉴 설정
+    final Menu menu = Menu();
+    await menu.buildFrom([
+      MenuItemLabel(
+        label: 'Show Window',
+        onClicked: (menuItem) => _showWindow(),
+      ),
+      MenuItemLabel(
+        label: 'Hide Window',
+        onClicked: (menuItem) => _hideWindow(),
+      ),
+      MenuSeparator(),
+      MenuItemLabel(
+        label: 'Exit',
+        onClicked: (menuItem) => _exitApp(),
+      ),
+    ]);
+
+    await _systemTray.setContextMenu(menu);
+
+    // 시스템 트레이 아이콘 클릭 이벤트
+    _systemTray.registerSystemTrayEventHandler((eventName) {
+      debugPrint("eventName: $eventName");
+      if (eventName == kSystemTrayEventClick) {
+        _toggleWindow();
+      } else if (eventName == kSystemTrayEventRightClick) {
+        _systemTray.popUpContextMenu();
+      }
     });
+  }
+
+  // 윈도우 표시
+  Future<void> _showWindow() async {
+    await windowManager.show();
+    await windowManager.focus();
+  }
+
+  // 윈도우 숨기기
+  Future<void> _hideWindow() async {
+    await windowManager.hide();
+  }
+
+  // 윈도우 토글 (보이기/숨기기)
+  Future<void> _toggleWindow() async {
+    bool isVisible = await windowManager.isVisible();
+    if (isVisible) {
+      await _hideWindow();
+    } else {
+      await _showWindow();
+    }
+  }
+
+  // 앱 종료
+  Future<void> _exitApp() async {
+    await _systemTray.destroy();
+    await windowManager.destroy();
+  }
+
+  // 윈도우 닫기 버튼 클릭 시 숨기기 (종료하지 않고)
+  @override
+  void onWindowClose() async {
+    bool isPreventClose = await windowManager.isPreventClose();
+    if (isPreventClose) {
+      await _hideWindow();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
+      backgroundColor: Colors.grey[100],
+      body: Column(
+        children: [
+          // 커스텀 타이틀 바
+          Container(
+            height: 60,
+            decoration: BoxDecoration(
+              color: Colors.blue[50],
+              border: Border(
+                bottom: BorderSide(color: Colors.grey[300]!),
+              ),
             ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+            child: Row(
+              children: [
+                const SizedBox(width: 20),
+                const Text(
+                  'Single Instance App',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const Spacer(),
+                // Hide Window 버튼 (가운데)
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                  child: IconButton(
+                    onPressed: _hideWindow,
+                    icon: const Icon(Icons.remove),
+                    tooltip: 'Hide Window',
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
+                      fixedSize: const Size(30, 30),
+                    ),
+                  ),
+                ),
+                // Close 버튼
+                Container(
+                  margin: const EdgeInsets.only(right: 20),
+                  child: IconButton(
+                    onPressed: () async {
+                      await windowManager.setPreventClose(true);
+                      await _hideWindow();
+                    },
+                    icon: const Icon(Icons.close),
+                    tooltip: 'Close to Tray',
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                      fixedSize: const Size(30, 30),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+          // 메인 컨텐츠
+          Expanded(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.desktop_mac,
+                    size: 80,
+                    color: Colors.blue,
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Single Instance macOS App',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'System Tray에서 앱을 관리하세요',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: _hideWindow,
+                        icon: const Icon(Icons.visibility_off),
+                        label: const Text('Hide Window'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 20),
+                      ElevatedButton.icon(
+                        onPressed: _exitApp,
+                        icon: const Icon(Icons.exit_to_app),
+                        label: const Text('Exit App'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 }
